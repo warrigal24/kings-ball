@@ -1,0 +1,3051 @@
+!% -~S
+!% $OMIT_UNUSED_ROUTINES=1
+!% $ZCODE_LESS_DICT_DATA=1
+!========================================
+! The King's Ball
+! Copyright © 2023 Garry Francis
+!========================================
+!Constant DEBUG;
+
+Constant Story "The King's Ball";
+#Ifv5;
+Zcharacter table + '@{A9}'; !Add copyright symbol
+Constant Headline "^Copyright @{A9} 2023 Garry Francis^Type ABOUT for further info and credits.^^";
+#Ifnot;
+Constant Headline "^Copyright (c) 2023 Garry Francis^Type ABOUT for further info and credits.^^";
+#Endif;
+
+Array UUID_ARRAY string "UUID://e5f400f4-bfd6-4619-b1fe-05dcc5cb6b94//";
+#Ifdef UUID_ARRAY;
+#Endif;
+
+Release 1;
+Serial "230301";
+
+!Inform 6 constants
+Constant DEATH_MENTION_UNDO;
+Constant MAX_CARRIED = 10;
+Constant MAX_SCORE = 100;
+
+!PunyInform constants
+Constant MAX_SCOPE 64;
+Constant OPTIONAL_EXTENDED_METAVERBS;
+Constant OPTIONAL_EXTENDED_VERBSET;
+Constant OPTIONAL_FULL_DIRECTIONS;
+Constant OPTIONAL_PRINT_SCENERY_CONTENTS;
+#Ifv5;
+Constant OPTIONAL_PROVIDE_UNDO;
+#Endif;
+
+!PunyInform static messages
+Constant MSG_PARSER_UNKNOWN_VERB "That's not a verb I recognise.";
+Constant MSG_SORRY_DEFAULT "Oh, don't apologise.";
+
+!PunyInform dynamic messages
+Constant MSG_CLOSE_NOT_OPEN 1000;
+Constant MSG_LOCK_ALREADY_LOCKED 1001;
+Constant MSG_LOCK_CLOSE_FIRST 1002;
+Constant MSG_LOCK_KEY_DOESNT_FIT 1003;
+Constant MSG_UNLOCK_ALREADY_UNLOCKED 1004;
+Constant MSG_UNLOCK_KEY_DOESNT_FIT 1005;
+
+Constant MSG_SHOUT_DEFAULT 1006;
+
+!Game-specific constants
+
+!Game-specific variables
+
+!Replaced actions
+Replace GoSub;
+Replace LockSub;
+Replace UnlockSub;
+
+Include "globals.h";
+
+!========================================
+! Entry point routines
+!========================================
+[ ChooseObjects obj code;
+  if (code == 2)
+  {
+    ! Stage 1: Disambiguation
+    if (action_to_be == ##Close && obj has open)
+      return 1; !Appropriate
+    if (action_to_be == ##Drop && obj in player && obj hasnt worn)
+      return 1; !Appropriate
+    if (action_to_be == ##Lock && obj hasnt locked)
+      return 1; !Appropriate
+    if (action_to_be == ##Open && obj hasnt open)
+      return 1; !Appropriate
+    if (action_to_be == ##Take && obj notin player)
+      return 1; !Appropriate
+    if (action_to_be == ##Unlock && obj has locked)
+      return 1; !Appropriate
+    return 0; !Inappropriate
+  }
+  ! Stage 2: Processing an "all"
+  if (obj has scenery or concealed or static or animate)
+    return 2; !Force exclusion
+  if (action_to_be == ##Take && obj in location && obj ~= player)
+    return 1; !Force inclusion
+  if (action_to_be == ##Drop && obj in player && obj hasnt worn)
+    return 1; !Force inclusion
+  return 0; !Accept parser's decision
+];
+
+[ LibraryMessages p_msg p_arg_1 p_arg_2;
+  switch (p_msg)
+  {
+    MSG_CLOSE_NOT_OPEN:
+      print_ret (CTheyreOrIts)noun, " already closed.";
+    MSG_LOCK_ALREADY_LOCKED:
+      print_ret (CTheyreOrIts)noun, " already locked.";
+    MSG_LOCK_CLOSE_FIRST:
+      "You'll have to close ", (ItOrThem)noun, " first.";
+    MSG_LOCK_KEY_DOESNT_FIT:
+      print_ret (The)second, " ", (DoesntOrDont)second, " fit the lock.";
+    MSG_UNLOCK_ALREADY_UNLOCKED:
+      print_ret (CTheyreOrIts)noun, " already unlocked.";
+    MSG_UNLOCK_KEY_DOESNT_FIT:
+      print_ret (The)second, " ", (DoesntOrDont)second, " fit the lock.";
+    MSG_SHOUT_DEFAULT:
+      "~Yahoo!~";
+  }
+  p_arg_1 = p_arg_2;
+];
+
+Include "puny.h";
+
+!========================================
+! Initialisation
+!========================================
+[ Initialise;
+  lookmode = 2;
+  move small_key to player;
+  player.description = PlayerDescription;
+  no_implicit_actions = true;
+  location = room01;
+  "Every year, the king holds an extravagant ball where he invites all the local dignitaries and they lavish him with gifts. The king sells some of these gifts after the ball and uses the money to fund the ball the following year. More importantly, he also gifts some of the money to enterprising craftsmen, tradesmen and other small businesses to help them establish or improve their business. It's a very generous incentive and is very popular with the people, as all honest, hard-working folk have a chance to gain the king's favour.^^If you're not a dignitary and you get invited to the king's ball, then there's a fair chance that you'll be able to present your business proposal to the king and maybe get some funding.^^You're the local baker. You work long hours making and selling wheat, barley and rye breads. It's a living, but you dream of making sweet pastries, fruit cakes, gingerbread and other delectable things that you know would be popular. Unfortunately, you don't have enough time or resources to diversify. You need to get some funding from the king, so that you can hire a couple of apprentices, expand your shop and install some new ovens. There's just one problem. You haven't been invited to the ball.^^You come up with an ingenious plan. You've baked the most gorgeous fruit cake. If you can get into the palace and present your plans (and your cake) to the king, you're sure he would provide you with the funding you need.^^You leave the cake in the shop and set off to see if you can find a way into the palace. It looks easy enough. All you have to do is get past that guard.^";
+];
+
+!========================================
+! Inventory
+!========================================
+!----------------------------------------
+! Small key
+!----------------------------------------
+Object small_key "small key"
+with
+  name 'small' 'key',
+  description "It's the key to your shop.",
+has;
+
+!========================================
+! Room 1: Palace Gates
+!========================================
+Object room01 "Palace Gates"
+with
+  description "You're faced by an imposing stone wall to the north. The only entrance is through the palace gates. You can see your objective, the king's palace, beyond the gates. A cobblestone street heads south from the gates and a dirt laneway heads west.",
+  n_to palace_gates,
+  s_to room02,
+  w_to
+  [;
+    if (guard in self)
+      "The guard yells, ~Oi, where d'ya think you're goin'?~^^You try to explain that your backyard is down that way. ~It don't matter. No one goes down there during the king's ball.~";
+    else
+      return room14;
+  ],
+has light;
+
+!----------------------------------------
+! Palace (floating object)
+!----------------------------------------
+Object "palace"
+with
+  name 'king^s' 'palace' 'building',
+  description
+  [;
+    if (self in room01)
+      "You can see the palace through the gates, but you need to get closer to see it clearly.";
+    if (self in room16 or room17)
+      "The palace is a large stone building. It looks like it's two storeys high with ramparts around the roof, but you're more interested in what's inside the palace.";
+    "You can't see the palace from here because it's obscured by the imposing stone wall.";
+  ],
+  found_in
+  [;
+    if (location == room01 or room12 or room13 or room14 or room16 or room17)
+      rtrue;
+  ],
+has scenery;
+
+!----------------------------------------
+! Stone wall (floating object)
+!----------------------------------------
+Object stone_wall "imposing stone wall"
+with
+  name 'imposing' 'stone' 'wall',
+  description
+  [;
+    print "The stone wall surrounds the palace. It's an imposing structure, maybe ten or twelve feet high. As you're not a human battering ram, there's no way to go through it, but you might be able to go under it or over it.";
+    if (self in room01 or room16)
+      print " Mind you, it would probably be a lot easier to just go through the gates.";
+    if (self in room11 or room12)
+      print " Mind you, it would probably be a lot easier to just go through the gate.";
+    "";
+  ],
+  before
+  [;
+    Climb:
+      print "It's too high";
+      if (guard in location)
+        print ", apart from which, the guard would see you";
+      ".";
+  ],
+  found_in
+  [;
+    if (location == room01 or room11 or room12 or room13 or room14 or room16)
+      rtrue;
+  ],
+has scenery;
+
+!----------------------------------------
+! Palace gates (floating object)
+!----------------------------------------
+Object palace_gates "palace gates"
+with
+  parse_name
+  [ nw i flag;
+    nw = NextWord();
+    while (nw == 'palace' or 'gate' or 'gates//p' or 'entrance')
+    {
+      i++;
+      if (nw == 'palace')
+        flag++;
+      nw = NextWord();
+    }
+    if (i == flag)
+      return 0;
+    return i;
+  ],
+  article "the",
+  description
+  [;
+    print "The gates consist of vertical bars with ornate decorations and a lock that takes a large key. The gates are currently ";
+    if (self has open)
+      "open.";
+    else
+      "closed.";
+  ],
+  door_dir
+  [;
+    if (self in room01)
+      return n_to;
+    else
+      return s_to;
+  ],
+  door_to
+  [;
+    if (self in room01)
+      return room16;
+    else
+      return room01;
+  ],
+  before
+  [;
+    Climb:
+      print "That would require more agility than you possess";
+      if (guard in location)
+        print ", apart from which, the guard would see you";
+      ".";
+  ],
+  add_to_scope bars decorations,
+  found_in room01 room16,
+  with_key large_key,
+has door lockable locked openable pluralname static;
+
+!----------------------------------------
+! Vertical bars (attached to palace gates)
+!----------------------------------------
+Object bars "vertical bars"
+with
+  parse_name
+  [ i;
+    while (NextWord() == 'vertical' or 'bar' or 'bars//p' or 'point' or 'points//p' or 'pointy' or 'bit' or 'bits//p')
+      i++;
+    return i;
+  ],
+  description
+  [;
+    "The vertical bars keep people like you out of the palace. The pointy bits on top prevent people climbing over the top of the gate.";
+  ],
+has scenery;
+
+!----------------------------------------
+! Decorations (attached to palace gates)
+!----------------------------------------
+Object decorations "decorations"
+with
+  parse_name
+  [ i;
+    while (NextWord() == 'ornate' or 'flowery' or 'decoration' or 'decorations//p' or 'lock')
+      i++;
+    return i;
+  ],
+  description
+  [;
+    "Apart from the lock, the ornate flowery decorations are just there to impress passers by.";
+  ],
+has scenery;
+
+!----------------------------------------
+! Cobblestone street (floating object)
+!----------------------------------------
+Object "cobblestone street"
+with
+  name 'cobblestone' 'cobblestones//p' 'street',
+  description "The cobblestones are worn smooth by horses' hooves and wagon wheels.",
+  found_in
+  [;
+    if (location == room01 or room02 or room03 or room04 or room05)
+      rtrue;
+  ],
+has scenery;
+
+!----------------------------------------
+! Dirt laneway (floating object)
+!----------------------------------------
+Object "dirt laneway"
+with
+  name 'dirt' 'laneway' 'horses^' 'hooves//p',
+  description "The laneway is nothing more than compressed dirt with impressions of horses' hooves.",
+  found_in room01 room12 room13 room14,
+has scenery;
+
+!----------------------------------------
+! Sentry box
+!----------------------------------------
+Object sentry_box "sentry box" room01
+with
+  name 'sentry' 'box',
+  description
+  [;
+    print "It's a small wooden structure that's shaped a bit like a house, but it's only big enough to hold one person standing up. ";
+    if (guard in location)
+      "You can see a large key hanging on a hook inside the sentry box, but you can't get to it because the guard is blocking the entrance.";
+    else
+      <<Search self>>;
+  ],
+  invent
+  [;
+    if (inventory_stage == 2 && guard in location)
+      rtrue;
+  ],
+  react_before
+  [;
+    Take:
+      if (IndirectlyContains(self, noun) && guard in location)
+        "You can't get past the guard.";
+  ],
+  before
+  [;
+    Enter:
+      if (guard in location)
+        "~Ay, you keep outa there!~ The guard steps in front of his little house and blocks your entry. ~That's for guards only.~";
+    Receive:
+      if (guard in location)
+        "You can't get past the guard.";
+  ],
+has container enterable open static;
+
+!----------------------------------------
+! Hook
+!----------------------------------------
+Object hook "hook" sentry_box
+with
+  name 'hook',
+  description
+  [;
+    print "It's just a small hook attached to the inside wall of the sentry box. ";
+    <<Search self>>;
+  ],
+  invent
+  [;
+    if (inventory_stage == 2 && children(self) == 0)
+      rtrue;
+  ],
+  before
+  [;
+    Receive:
+      if (noun ~= large_key)
+      {
+        move noun to location;
+        print_ret (The)noun, " falls off the hook.";
+      }
+  ],
+has static supporter;
+
+!----------------------------------------
+! Large key
+!----------------------------------------
+Object large_key "large key" hook
+with
+  name 'large' 'key' 'bow' 'ring',
+  description "It's a large key with an ornate bow (or head) and a large ring for hanging on the hook.",
+has;
+
+!----------------------------------------
+! Guard
+!----------------------------------------
+Object guard "guard" room01
+with
+  name 'guard' 'man' 'bearded' 'halberdier',
+  description
+  [;
+    print "He's a middle-aged bearded man dressed like a halberdier. He holds a halberd in his right hand. He's wearing a tunic in the red and yellow livery of the king, a ceremonial helmet and a breastplate.";
+    if (egg in self)
+      print " A broken egg is dripping down the front of his breastplate. I wonder who did that?";
+    "";
+  ],
+  add_to_scope
+  [;
+    PlaceInScope(beard);
+    PlaceInScope(tunic);
+    PlaceInScope(helmet);
+    PlaceInScope(breastplate);
+    PlaceInScope(backplate);
+    PlaceInScope(straps);
+    PlaceInScope(halberd);
+  ],
+  life
+  [;
+    Ask:
+      switch (second)
+      {
+        'ball', 'party':
+          "~All the big wigs'll be there. And you ain't no big wig, so you won't be there. Ha, ha!~";
+        'big', 'wigs//p', 'dignitaries//p':
+          "~That's all them rich folks. Land owners, mainly.~";
+        'gate', 'gates//p':
+          "~These gates? They're locked and they're stayin' that way unless you're invited to the ball. An' you ain't invited.~";
+        'guard', 'himself':
+          "~Me? I'm Horgard the Fierce. Guard by name, guard by nature.~";
+        'halberd':
+          "~It's me toothpick. Ya want me to try it on you?~ You say, ~No, thank you.~";
+        'king':
+          "~He's the boss. He's chuckin' a party today. And before ya ask, no, ya can't get in.~";
+        'large', 'key':
+          "~Hands off!~";
+        'me', 'myself', 'self', 'ben', 'benjamin':
+          "~What's up with ya? Don't ya know who ya are? Well, I'll tell ya. You're Lord Pipsqueak. Haw, haw, haw!~";
+        'palace':
+          "He just points his thumb behind him. ~Are ya blind? That's it there.~";
+        'sentry', 'box':
+          "~That's me house. I'd invite ya in, but then I'd have ta kill ya.~";
+        default:
+          "He just scratches his beard and says, ~I dunno nothin' 'bout that.~";
+      }
+    Attack:
+      "As you approach the guard, he points his halberd towards you and growls like a cornered wolf. You think better of it.";
+    Give:
+      if (second == coin)
+        "He takes the coin, inspects it, then hands it back to you. ~Are you trying to bribe the king's guard? Nice try, buddy. If I got got, I'd spend the rest of my life in the king's dungeon. Try some other mug.~";
+    Talk:
+      "~Hello.~^^~What d'ya want?~ questions the guard. He doesn't sound very friendly. ~You betta get outa here before I run ya through.~";
+  ],
+  before
+  [;
+    Bribe:
+      if (second == nothing && coin in player)
+      {
+        print "(with the coin)^";
+        <<Give coin self>>;
+      }
+  ],
+has animate;
+
+!----------------------------------------
+! Guard's beard
+!----------------------------------------
+Object beard "beard"
+with
+  name 'beard' 'head' 'face' 'noggin',
+  description "The guard sports a big, bushy beard.",
+  before
+  [;
+    Pull:
+      "~Ouch! Piss off ya little pipsqueak.~";
+  ],
+has scenery;
+
+!----------------------------------------
+! Guard's tunic
+!----------------------------------------
+Object tunic "tunic"
+with
+  parse_name
+  [ i;
+    while (NextWord() == 'body' or 'tunic' or 'sleeve' or 'sleeves//p' or 'skirt' or 'livery' or 'chequered' or 'checkered' or 'pattern')
+      i++;
+    return i;
+  ],
+  description "The body of the tunic is concealed by the breastplate, but the exposed sleeves and skirt reveal a large chequered pattern in red and yellow. It reminds you of rose petals and egg yolk.",
+has scenery;
+
+!----------------------------------------
+! Guard's helmet
+!----------------------------------------
+Object helmet "helmet"
+with
+  name 'ceremonial' 'helmet' 'iron' 'steel',
+  description "It's a light iron or steel helmet that sits on his noggin.",
+has scenery;
+
+!----------------------------------------
+! Guard's breastplate
+!----------------------------------------
+Object breastplate "breastplate"
+with
+  name 'breast' 'breastplate' 'iron' 'steel',
+  description
+  [;
+    print "It's a light iron or steel covering that protects the chest. It's attached to the backplate with leather straps at the shoulders and sides.";
+    if (egg in guard)
+      print " A broken egg is dripping down the front of the breastplate. I wonder who did that?";
+    "";
+  ],
+has scenery;
+
+!----------------------------------------
+! Guard's backplate
+!----------------------------------------
+Object backplate "backplate"
+with
+  name 'back' 'backplate',
+  description "It's a light iron or steel covering that protects the back. It's attached to the breastplate with leather straps at the shoulders and sides.",
+has scenery;
+
+!----------------------------------------
+! Guard's straps
+!----------------------------------------
+Object straps "straps"
+with
+  parse_name
+  [ i;
+    while (NextWord() == 'leather' or 'strap' or 'straps//p' or 'shoulder' or 'shoulders//p' or 'side' or 'sides//p')
+      i++;
+    return i;
+  ],
+  description "The narrow leather straps attach the breastplate to the backplate at the shoulders and sides.",
+has pluralname scenery;
+
+!----------------------------------------
+! Guard's halberd
+!----------------------------------------
+Object halberd "halberd"
+with
+  parse_name
+  [ i;
+    while (NextWord() == 'halberd' or 'two-handed' or 'polearm' or 'spear' or 'shaft' or 'axe' or 'axehead' or 'sharp' or 'point')
+      i++;
+    return i;
+  ],
+  description "It's a two-handed polearm with a long wooden shaft. At the top of the shaft is an axehead and a sharp point, like a spear. It strikes you as being an impractical weapon to use in the confines of a sentry box, so it's probably just for decoration or to scare off bakers that are trying to crash the king's ball.",
+has scenery;
+
+!========================================
+! Room 2: Promenade
+!========================================
+Object room02 "Promenade"
+with
+  description "This is the main road to the palace. It heads north and south. It's currently lined with townsfolk hoping to catch a glimpse of the dignitaries going to the ball.",
+  n_to room01,
+  s_to room03,
+  each_turn
+  [;
+    StreetBackground();
+  ],
+has light;
+
+!----------------------------------------
+! Promenade (floating object)
+!----------------------------------------
+Object "promenade"
+with
+  name 'promenade',
+  description "It's lined with people on both sides of the cobblestone street.",
+  found_in room02 room03,
+has scenery;
+
+!----------------------------------------
+! Hitching post (floating object)
+!----------------------------------------
+Object "hitching post"
+with
+  name 'hitching' 'post',
+  description "This is one of the king's innovations. He had hitching posts installed in the main streets so that people could hitch their horses and wagons.",
+  found_in room02 room03 room04 room05,
+has static;
+
+!----------------------------------------
+! People (floating object)
+!----------------------------------------
+Object "people"
+with
+  name 'crowd' 'crowds//p' 'people//p' 'townsfolk//p',
+  article "lots of",
+  description "There are a lot of people pushing and jostling one another to get a good view of the street.",
+  found_in room02 room03,
+has pluralname static;
+
+!========================================
+! Room 3: Town Square
+!========================================
+Object room03 "Town Square"
+with
+  description "This is the town square, where people normally meet to share news and gossip. It's always a hive of activity. Today, it's crowded with people wanting to see who's going to the king's ball. A short promenade heads to the north. The street branches to the east and west, but the east branch is blocked with people.",
+  n_to room02,
+  e_to "You can't squeeze through the throng of people.",
+  w_to room04,
+  each_turn
+  [;
+    StreetBackground();
+  ],
+has light;
+
+!----------------------------------------
+! Town square
+!----------------------------------------
+Object "town square" room03
+with
+  name 'town' 'square',
+  article "the",
+  description "It's full of people trying to see who's going to the king's ball.",
+has scenery;
+
+!----------------------------------------
+! Fountain
+!----------------------------------------
+Object fountain "fountain" room03
+with
+  name 'fountain',
+  description
+  [;
+    print "The fountain is purely functional. It's connected to an underground spring and provides drinking water for the townsfolk. ";
+    if (coin in nothing)
+    {
+      move coin to self;
+      print "You see something glitter in the water. ";
+    }
+    <<Search self>>;
+  ],
+  react_before
+  [;
+    Rub:
+      if (noun == player)
+        "You can't wash yourself in the fountain! This is the town's drinking water. If the people here were to see you, you'd be crucified. Find somewhere else to wash.";
+  ],
+  before
+  [;
+    Receive:
+      "Please don't pollute the drinking water in the fountain.";
+  ],
+has container open static;
+
+!----------------------------------------
+! Water
+!----------------------------------------
+Object "water" fountain
+with
+  name 'water',
+  article "some",
+  description "It's lovely, refreshing, crystal clear water.",
+  before
+  [;
+    Drink:
+      "You scoop a handful of water to your mouth. Ah, very refreshing.";
+    Take:
+      "It trickles through your fingers.";
+  ],
+has static;
+
+!----------------------------------------
+! Coin
+!----------------------------------------
+Object coin "coin"
+with
+  name 'coin',
+  description "It's a roughly-cast silver coin with the king's head stamped on one side and the royal crest on the other.",
+has;
+
+!========================================
+! Room 4: Street Outside Butcher's Shop
+!========================================
+Object room04 "Street Outside Butcher's Shop"
+with
+  description "The butcher's shop is to the north. It's closed at the moment, as the butcher is supplying the meat for the king's ball. The street slopes down to the west and flattens out to the east.",
+  n_to "The shop is closed at the moment. You'll have to come back after the king's ball if you want to see the butcher or buy some meat.",
+  e_to room03,
+  w_to room05,
+  d_to manhole,
+  before
+  [;
+    Smell:
+      if (noun == nothing && manhole has open)
+        "The stench from the manhole accosts your nostrils.";
+  ],
+has light;
+
+!----------------------------------------
+! Butcher's shop
+!----------------------------------------
+Object "butcher's shop" room04
+with
+  name 'butcher' 'butcher^s' 'shop',
+  description "This is the shop next to yours, but it's closed at the moment.",
+  before
+  [;
+    Enter:
+      <<Go FAKE_N_OBJ>>;
+  ],
+has scenery;
+
+!----------------------------------------
+! Vegetable cart
+!----------------------------------------
+Object cart "vegetable cart" room04
+with
+  parse_name
+  [ i;
+    while (NextWord() == 'farmer' or 'joe^s' or 'vegetable' or 'hand' or 'cart')
+      i++;
+    return i;
+  ],
+  description
+  [;
+    print "This is farmer Joe's hand cart. It's only small, but it's loaded with crates of vegetables. ";
+    if (self in room04)
+      "He brings it into town about once a week to sell his vegetables. He always ties it the same hitching post outside the butcher's shop using a short length of rope.";
+    else
+      "Unfortunately, some dill untied it from the hitching post outside the butcher's shop and it rolled down the hill and crashed into another hitching post outside your bakery. One crate of potatoes has fallen off and potatoes are scattered all over the street. Farmer Joe won't be pleased when he finds out.";
+  ],
+  before
+  [;
+    LookUnder:
+      if (self in room04)
+        "You see a manhole under the cart.";
+      else
+        "You see a cobblestone street.";
+    Pull, Push, Take:
+      if (self in room04)
+        "It's tied to the hitching post.";
+      else
+        "It's too heavy to move by yourself. You don't have the muscles of farmer Joe.";
+  ],
+has static supporter;
+
+!----------------------------------------
+! Vegetables
+!----------------------------------------
+Object "vegetables" cart
+with
+  parse_name
+  [ i;
+    while (NextWord() == 'vegetable' or 'vegetables//p' or 'carrot' or 'carrots//p' or 'turnip' or 'turnips//p' or 'yam' or 'yams//p' or 'crates//p' or 'boxes//p')
+      i++;
+    return i;
+  ],
+  description
+  [;
+    print "There are crates of various root vegetables like carrots, turnips, yams";
+    if (cart in room04)
+      print ", potatoes";
+    print " and something you don't recognise.";
+    if (cart in room05)
+      print "Unfortunately, the potatoes are now rolling around the street.";
+    "";
+  ],
+  before
+  [;
+    Take:
+      "You know better than to steal vegetables from farmer Joe's cart.";
+  ],
+has pluralname scenery;
+
+!----------------------------------------
+! Potatoes
+!----------------------------------------
+Object potatoes "potatoes" cart
+with
+  name 'spud' 'spuds//p' 'potato' 'potatoes//p',
+  description "Potatoes are a recent innovation. Farmer Joe was introduced to them by a Spaniard and everyone knows that Spaniards are not to be trusted. The townsfolk won't eat them because they think they will catch leprosy. In fact, they call them 'hog feed'.",
+  before
+  [;
+    Take:
+      if (self has scenery)
+        "You know better than to steal vegetables from farmer Joe's cart.";
+  ],
+has pluralname scenery;
+
+!----------------------------------------
+! Crate
+!----------------------------------------
+Object crate "wooden crate"
+with
+  name 'wooden' 'wood' 'crate',
+  description
+  [;
+    print "It's a heavy wooden crate that's normally used to carry fruit and vegetables. It looks solid enough to hold your weight";
+    if (player in top_of_crate)
+      ", which is comforting to know, as you're currently standing on it.";
+    print ". ";
+    if (self has general)
+      "It's currently upside down.";
+    <<Search self>>;
+  ],
+  invent
+  [;
+    if (inventory_stage == 2 && children(self) == 0)
+      rtrue;
+  ],
+  before
+  [;
+    Attack:
+      if (second == nothing && rounding_hammer in player)
+      {
+        print "(with the rounding hammer)^";
+        <<Attack self rounding_hammer>>;
+      }
+      if (second == nothing && nailing_hammer in player)
+      {
+        print "(with the nailing hammer)^";
+        <<Attack self nailing_hammer>>;
+      }
+      if (second == nothing)
+        "The crate is very strong. You can't break it with your bare hands.";
+      if (second ~= rounding_hammer)
+        "Nice try, but ", (the)second, " isn't heavy enough to break the crate.";
+      while (child(crate))
+        move child(crate) to location;
+      move crate to limbo;
+      MoveFloatingObjects();
+      move wood to location;
+      "You smash the crate to pieces with the rounding hammer and end up with a small pile of splintered wood.";
+    Burn:
+      if (second == nothing)
+        "You'll have to tell me what to burn it with.";
+      "The crate is too solid. You'll have to break it up.";
+    Climb:
+      if (player in top_of_crate)
+        <<Exit top_of_crate>>;
+      else
+        <<Enter top_of_crate>>;
+    Enter:
+      <<Enter top_of_crate>>;
+    Exit, GetOff:
+      <<Exit top_of_crate>>;
+    Receive:
+      if (receive_action == ##PutOn)
+        "You can only put things in the crate.";
+      if (player in top_of_crate)
+        "You'll have to get off the crate first.";
+      if (noun == self && second == self)
+        "You can't put the crate inside itself.";
+      if (self has general)
+        "You'll have to turn the crate over first.";
+!      if (noun.size > self.size)
+!        print_ret (The)noun, " won't fit in the crate.";
+    Take:
+      if (player in top_of_crate)
+        "You'll have to get off the crate first.";
+    Turn:
+      if (self in player)
+        "There's no point turning the crate over while you're carrying it.";
+      if (player in top_of_crate)
+        "You'll have to get off the crate first.";
+      if (self has general)
+      {
+        give self ~general;
+        "You turn the crate right side up.";
+      }
+      give self general;
+      if (children(self) == 0)
+        "You turn the crate upside down.";
+      while (child(self))
+        move child(self) to location;
+      "You empty the crate and turn it upside down.";
+  ],
+  after
+  [;
+    Take:
+      give self ~general;
+  ],
+has container open scenery;
+
+!----------------------------------------
+! Top of crate
+!----------------------------------------
+Object top_of_crate "top of the wooden crate"
+with
+  react_before
+  [;
+    Drop:
+      if (player in self && noun in player && noun hasnt worn)
+      {
+        move noun to location;
+        print_ret (The)noun, " falls to the ground.";
+      }
+    Take:
+      if (player in self && noun in location)
+        "You can't reach ", (the)noun, " while you're standing on the crate.";
+  ],
+  before
+  [;
+    Enter:
+      if (crate in player)
+        "Getting on the crate while you're carrying it? That would be a clever trick.";
+      if (player in self)
+        "You're already on the crate.";
+      if (verb_word == 'lie')
+        "The crate isn't large enough to lie on.";
+      if (verb_word == 'sit')
+        "You'd be better off standing on it.";
+    Exit, GetOff:
+      if (player notin self)
+        "You aren't on the crate.";
+    Go:
+      if (selected_direction == u_to)
+      {
+        if (location == room01 or room13 or room14)
+        {
+          print "Not here. ";
+          if (guard in room01)
+            "The guard will see you.";
+          else
+            !This only applies in room01, as crate won't exist otherwise
+            "The people in the street to the south will see you.";
+        }
+        if (location == room12)
+        {
+          !if (grappling_hook hasnt general)
+          !  "You can't reach the top of the wall.";
+          print "You clamber up the rope and over the wall, then drop to the ground on the other side.^^";
+          PlayerTo(room11);
+          return 2;
+        }
+        print "You can't climb any higher.^";
+        return 2;
+      }
+      if (selected_direction == d_to)
+      {
+        <Exit self>;
+        return 2;
+      }
+      print "You'll have to get off the crate first.^";
+      return 2;
+  ],
+  after
+  [;
+    Enter:
+      if (crate has general)
+        "You climb onto the crate.";
+      give crate general;
+      if (children(crate) == 0)
+        "You turn the crate upside down and climb onto it.";
+      while (child(crate))
+        move child(crate) to location;
+      "You empty the crate, turn it upside down and climb onto it.";
+    Exit:
+      "You climb off the crate.";
+  ],
+  found_in
+  [;
+    if (TestScope(crate))
+      rtrue;
+  ],
+has enterable proper supporter scenery;
+
+!----------------------------------------
+! Splintered wood
+!----------------------------------------
+Object wood "splintered wood"
+with
+  article "some",
+  name 'splintered' 'wood' 'firewood',
+  description "This is the remains of the crate that you smashed. It's not good for anything now, except maybe firewood.",
+has;
+
+!----------------------------------------
+! Rope
+!----------------------------------------
+Object rope "rope" room04
+with
+  name 'rope',
+  description
+  [;
+    print "It's a short length of rope";
+    if (self has scenery)
+      " that attaches farmer Joe's vegetable cart to the hitching post";
+    ".";
+  ],
+  before
+  [;
+    Take:
+      if (self has scenery)
+        "You'll have to untie it first.";
+    Tie:
+      if (second == meat_hook)
+      {
+        move meat_hook to limbo;
+        move grappling_hook to parent(self);
+        move self to limbo;
+        "You tie the rope to the meat hook. Now it looks like a grappling hook.";
+      }
+    ThrowAt:
+      "You hang onto one end of the rope and throw the other end. It has nothing to hook onto, so you gather it up again.";
+    Untie:
+      if (self has scenery)
+      {
+        give self ~scenery;
+        move self to player;
+        give crate ~scenery;
+        move crate to room05;
+        give potatoes ~scenery;
+        move potatoes to room05;
+        if (manhole has open)
+          give manhole ~scenery static;
+        give cover ~scenery static;
+        move cart to room05;
+        "You untie the rope from the vegetable cart, then turn around and untie it from the hitching post. While your back is turned, you hear clattering on the cobblestones. You turn back to see that the vegetable cart is slowly rolling down the hill and has revealed a manhole in the street. Then you hear an almighty crash. Oh, oh. What have you done?";
+      }
+  ],
+has scenery;
+
+!----------------------------------------
+! Manhole (floating object)
+!----------------------------------------
+Object manhole "manhole"
+with
+  name 'manhole',
+  description
+  [;
+    if (self in room04)
+    {
+      print "The manhole is in the street near the hitching post. ";
+      if (self hasnt open)
+        "It's sealed by a manhole cover.";
+      else
+        "The manhole cover has been pushed aside to allow the stench from the sewer to escape.";
+    }
+    print "The manhole is above you. ";
+    if (self hasnt open)
+      "There's a circular crack of light around the edge of the manhole cover.";
+    else
+      "The manhole cover has been pushed aside to reveal the sun streaming in from overhead.";
+  ],
+  door_dir
+  [;
+    if (self in room04)
+      return d_to;
+    else
+      return u_to;
+  ],
+  door_to
+  [;
+    if (self hasnt open)
+      "The manhole is sealed by a manhole cover.";
+    if (self in room08)
+      return room04;
+    give player general;
+    return room08;
+  ],
+  before
+  [;
+    if (action ~= ##Examine && self in room04 && cart in room04)
+      "You can't easily get to it with the vegetable cart in the way.";
+    Close:
+      <<Close cover>>;
+    Open:
+      <<Open cover second>>;
+  ],
+  found_in room04 room08,
+has door scenery;
+
+!----------------------------------------
+! Manhole cover
+!----------------------------------------
+Object cover "manhole cover" room04
+with
+  parse_name
+  [ nw;
+    nw = NextWord();
+    if (nw == 'manhole' && NextWord() == 'cover')
+      return 2;
+    if (nw == 'cover')
+      return 1;
+    return 0;
+  ],
+  description
+  [;
+    if (self in room04)
+      "You can't see it clearly in the dark. You can only tell that it's circular, because of the crack of sunlight around its edges.";
+    print "It's a heavy iron disc with a handle flush with the top surface. ";
+    if (manhole has open)
+      "It's sitting on the street beside the manhole, where it looks like a bit of a hazard. You have visions of someone tripping over it or falling in the manhole.";
+    else
+      "It sits snuggly in the manhole.";
+  ],
+  before
+  [;
+    if (action ~= ##Examine && self in room04 && cart in room04)
+      "You can't easily get to it with the vegetable cart in the way.";
+    Close:
+      if (manhole hasnt open)
+        "It's already closed.";
+      if (self in room04)
+        <<Push self>>;
+    Open:
+      if (manhole has open)
+        "It's already open.";
+      if (self in room04)
+        <<Pull self second>>;
+      else
+        <<Push self>>;
+    Pull, Take:
+      if (self in room08)
+        "It's lodged in the manhole. Try pushing it.";
+      if (manhole has open)
+        "It's too heavy.";
+      if (second == nothing && meat_hook in player)
+      {
+        print "(with the meat hook)^";
+        <<Pull self meat_hook>>;
+      }
+      if (second == nothing && grappling_hook in player)
+      {
+        print "(with the grappling hook)^";
+        <<Pull self grappling_hook>>;
+      }
+      if (second == nothing)
+        "You can't get your fingers around the handle. You need a hook or something to grab it.";
+      if (second ~= meat_hook or grappling_hook)
+        "You can't pull the manhole cover with ", (ThatOrThose)second, ". You need something like a large hook.";
+      give manhole open ~scenery static;
+      MoveFloatingObjects();
+      "Oof, it's heavy. You pull the manhole cover out of the manhole frame, then push it to one side. Oh, my god! There's a terrible pong coming out of the sewer below. Do you really want to go down there?";
+    Push:
+      if (self in room04 && manhole has open)
+      {
+        give manhole ~open scenery ~static;
+        MoveFloatingObjects();
+        "Oof, it's heavy. You push the manhole cover back into the manhole frame, thus blocking the stink from the sewer.";
+      }
+      if (self in room04)
+        "It's lodged in the manhole. Try pulling it.";
+      give manhole open ~scenery static;
+      MoveFloatingObjects();
+      "Oof, it's heavy. You push the manhole cover up out of the manhole frame, then push it aside so that the sunlight comes streaming in. You can now climb out of the manhole.";
+  ],
+  found_in
+  [;
+    if (location == room04)
+      rtrue;
+    if (location == room08 && manhole hasnt open)
+      rtrue;
+  ],
+has scenery;
+
+!========================================
+! Room 5: Street Outside Benny's Bakery
+!========================================
+Object room05 "Street Outside Benny's Bakery"
+with
+  description "Your bakery is to the north. The sign out the front says, 'Benny's Bakery'. The street slopes up to the east and down towards the river to the west.",
+  n_to bakery_door,
+  e_to room04,
+  w_to "That direction takes you to the river. There's nothing down there that will help you get to the king's ball.",
+has light;
+
+!----------------------------------------
+! Benny's bakery (floating object)
+!----------------------------------------
+Object "Benny's Bakery"
+with
+  name 'benny' 'benny^s' 'bakery',
+  description "This is your bakery. You know it like the back of your hand, so there's no need to describe it.",
+  found_in room05 room06 room07,
+has proper scenery;
+
+!----------------------------------------
+! Bakery door (floating object)
+!----------------------------------------
+Object bakery_door "bakery door"
+with
+  name 'bakery' 'door',
+  description
+  [;
+    print "This is the door to your bakery. It's a very simple affair. It opens and closes to let customers in and out. Just at the moment, it's ";
+    if (self has open)
+      "open.";
+    else
+      "closed.";
+  ],
+  door_dir
+  [;
+    if (self in room05)
+      return n_to;
+    else
+      return s_to;
+  ],
+  door_to
+  [;
+    if (self in room05)
+      return room06;
+    else
+      return room05;
+  ],
+  with_key small_key,
+  found_in room05 room06,
+has door openable lockable locked static;
+
+!========================================
+! Room 6: Inside Benny's Bakery
+!========================================
+Object room06 "Inside Benny's Bakery"
+with
+  description "This is your bakery. It's well stocked with various breads baked from wheat, barley or rye. It's all pretty boring, really, because you see it every day of the week. There are exits to the north and south.",
+  n_to room07,
+  s_to bakery_door,
+has light;
+
+!----------------------------------------
+! Cake
+!----------------------------------------
+Object cake "cake" room06
+with
+  name 'fruit' 'cake',
+  description "This is the fruit cake that you made for the king. It's made from an old family recipe with some improvements of your own. It contains dried fruit, citrus rind and a good helping of rum.",
+  before
+  [;
+    Eat:
+      "You would love to eat the cake, but then you wouldn't have one for the king. You think it best to resist the temptation.";
+  ],
+has edible;
+
+!========================================
+! Room 7: Backyard of Bakery
+!========================================
+Object room07 "Backyard of Bakery"
+with
+  description "You're in the backyard of your bakery. It's all bare earth, because the chickens have picked it clean. The chicken coop is to the west. There's a back gate to the north or you can return to the bakery to the south.",
+  n_to back_gate,
+  s_to
+  [;
+    if (chickens in player)
+      "You can't take the chickens out of the yard or they'll mess up the bakery.";
+    return room06;
+  ],
+  w_to room18,
+  before
+  [;
+    Shout:
+      if (smoke in bucket)
+      {
+        move guard to room13;
+        "~Fire, fire!~^^You hear the guard run down the laneway and stop outside your back gate.";
+      }
+  ],
+has light;
+
+!----------------------------------------
+! Backyard of bakery
+!----------------------------------------
+Object "backyard" room07
+with
+  name 'backyard' 'yard',
+  description "It's essentially just a bare patch of earth between the bakery and the back gate. Oh, and the chicken coop.",
+has scenery;
+
+!----------------------------------------
+! Chicken coop (floating object)
+!----------------------------------------
+Object coop "chicken coop"
+with
+  name 'chicken' 'coop',
+  description "There's nothing much to see in the chicken coop, apart from straw.",
+  before
+  [;
+    Enter:
+      if (self in room07)
+        <<Go FAKE_W_OBJ>>;
+    Exit:
+      if (self in room18)
+        <<Go FAKE_E_OBJ>>;
+  ],
+  found_in room07 room18,
+has scenery;
+
+!----------------------------------------
+! Back gate (floating object)
+!----------------------------------------
+Object back_gate "back gate"
+with
+  name 'back' 'gate',
+  description
+  [;
+    print "It's a simple wooden gate between your backyard and the laneway. It's currently ";
+    if (self has open)
+      print "open";
+    else
+      print "closed";
+    print ". The latch that locks the gate is on ";
+    if (self in room07)
+      "this side.";
+    else
+      "the other side.";
+  ],
+  door_dir
+  [;
+    if (self in room07)
+      return n_to;
+    else
+      return s_to;
+  ],
+  door_to
+  [;
+    if (self in room07 && chickens in player)
+      "You can't take the chickens out of the yard or they'll get away.";
+    if (self in room07)
+      return room13;
+    else
+      return room07;
+  ],
+  before
+  [;
+    Lock:
+      if (self has locked)
+        "It's already locked.";
+      if (self has open)
+        "You'll have to close it first.";
+      if (self in room13)
+        "The latch is on the other side.";
+      give self locked;
+      "You slide the latch closed. The gate is now locked, so no one can get in from the other side.";
+    Open:
+      if (self has locked)
+        "It's locked.";
+      if (self has open)
+        "It's already open.";
+      if (chickens notin room18)
+        "You can't open the gate now or the chickens will get out.";
+    Unlock:
+      if (self hasnt locked)
+        "It's already unlocked.";
+      if (self in room13)
+        "The latch is on the other side.";
+      give self ~locked;
+      "You slide the latch open. The gate is now unlocked.";
+  ],
+  found_in room07 room13,
+has door openable lockable locked static;
+
+!----------------------------------------
+! Latch
+!----------------------------------------
+Object "latch" room07
+with
+  name 'sliding' 'latch',
+  description
+  [;
+    print "It's just a simple sliding latch for the back gate. It's currently ";
+    if (back_gate has locked)
+      "locked.";
+    else
+      "unlocked.";
+  ],
+  before
+  [;
+    Close, Lock:
+      <<Lock back_gate>>;
+    Open, Unlock:
+      <<Unlock back_gate>>;
+    Slide:
+      if (back_gate has locked)
+        <<Unlock back_gate>>;
+      else
+        <<Lock back_gate>>;
+  ],
+has scenery;
+
+!----------------------------------------
+! Chickens
+!----------------------------------------
+Object chickens "chickens" room07
+with
+  parse_name
+  [ i;
+    while (NextWord() == 'dorking' or 'chicken' or 'chickens//p' or 'hen' or 'hens//p' or 'chook' or 'chooks//p')
+      i++;
+    return i;
+  ],
+  description "They are Dorking chickens. Someone told you that they were introduced during the Roman occupation, which makes them the oldest breed of chicken in England. The only thing that matters to you though, is that they are good layers of the small eggs that you use in your cake recipes.",
+  before
+  [;
+    Take:
+      if (chickens in coop && player notin coop)
+        "They're in the chicken coop.";
+      if (children(player) > 0)
+      {
+        print "You chase the chickens around the ";
+        if (chickens in room07)
+          print "yard";
+        else
+          print "coop";
+        " for five minutes and realise that you'll never catch them unless both arms are free. You'll need to drop everything if you expect to catch those damned chickens.";
+      }
+  ],
+  after
+  [;
+    Take:
+      "You round up the chickens.";
+  ],
+has pluralname;
+
+!----------------------------------------
+! Empty flour sacks
+!----------------------------------------
+Object dummy_sacks "empty flour sacks" room07
+with
+  parse_name
+  [ i;
+    if (TestScope(sack))
+      return 0;
+    while (NextWord() == 'empty' or 'flour' or 'sack' or 'sacks//p')
+      i++;
+    return i;
+  ],
+  description "The backyard is full of empty flour sacks. You must get around to burning them.",
+  before
+  [;
+    Take:
+      if (sack notin nothing)
+        "You've already taken one. How many empty flour sacks could you possibly need?";
+      move sack to player;
+      "You take one of the empty flour sacks.";
+  ],
+has pluralname static;
+
+!----------------------------------------
+! Empty flour sack
+!----------------------------------------
+Object sack "empty flour sack"
+with
+  article "an",
+  name 'empty' 'flour' 'sack',
+  description "It's an empty flour sack made of hessian. It's quite damp from being outdoors.",
+  invent
+  [;
+    if (inventory_stage == 2 && children(self) == 0)
+      rtrue;
+  ],
+has container open;
+
+!========================================
+! Room 8: Sewer under Manhole
+!========================================
+Object room08 "Sewer under Manhole"
+with
+  description "You're in the sewer beneath the street. How could anything smell so bad? The sewer comes from the north, then bends towards the west. There's a manhole above you.",
+  n_to room09,
+  w_to "The sewer slopes downwards towards the river. It's very slippery and you'd likely slip and break your neck. Apart from which, your objective is to the north.",
+  u_to manhole,
+  before
+  [;
+    Smell:
+      if (noun == nothing)
+        "How could anything smell so bad?";
+  ],
+  each_turn
+  [;
+    SewerBackground();
+  ],
+has light;
+
+!----------------------------------------
+! Sewer (floating object)
+!----------------------------------------
+Object "sewer"
+with
+  name 'sewer',
+  description "It's quite dark. The walls are slimy and the floor is very slippery. Sewage splashes around your ankles. Oh, and it really stinks. Did I mention that?",
+  before
+  [;
+    Smell:
+      "It's a sewer. What do you think it smells like? (Hint: It's bad, real bad.)";
+
+  ],
+  found_in room08 room09,
+has scenery;
+
+!========================================
+! Room 9: Sewer under Grate
+!========================================
+Object room09 "Sewer under Grate"
+with
+  description "You're in the sewer from the palace. It really stinks here. The sewer continues to the north, but the tunnel is too small to follow it. The main sewer heads south and that is high enough for you to stand.",
+  n_to "The sewer is too small to go any further north. You'll have to find another way.",
+  s_to room08,
+  u_to opening,
+  before
+  [;
+    Smell:
+      if (noun == nothing)
+        "How could anything smell so bad?";
+  ],
+  each_turn
+  [;
+    SewerBackground();
+  ],
+has light;
+
+!----------------------------------------
+! Opening (floating object)
+!----------------------------------------
+Object opening "opening"
+with
+  article "an",
+  name 'opening',
+  description
+  [;
+    if (self in room09)
+    {
+      print "The opening is in the roof of the sewer just above your head. ";
+      if (self hasnt open)
+        "It's sealed by a grate that allows light to filter in.";
+      else
+        "The grate has been pushed aside so that you can get out of the sewer.";
+    }
+    print "The opening is in the floor of the stable. ";
+    if (self hasnt open)
+      "It's blocked by a grate.";
+    else
+      "The grate has been pushed aside to reveal the sewer below.";
+  ],
+  door_dir
+  [;
+    if (self in room09)
+      return u_to;
+    else
+      return d_to;
+  ],
+  door_to
+  [;
+    if (self hasnt open)
+      "The grate blocks the way.";
+    if (self in room09)
+      return room10;
+    give player general;
+    return room09;
+  ],
+  before
+  [;
+    Close:
+      <<Close grate>>;
+    Open:
+      <<Open grate second>>;
+  ],
+  found_in room09 room10,
+has door scenery;
+
+!----------------------------------------
+! Grate (floating object)
+!----------------------------------------
+Object grate "grate"
+with
+  name 'grate' 'grating' 'slit' 'slits//p',
+  description
+  [;
+    print "It's a heavy iron grate with narrow slits. ";
+    if (self in room10 && opening has static)
+      "It's sitting on the floor of the stable beside the opening.";
+    if (self in room10)
+      "It's sitting in an opening that leads into the sewer.";
+    "It's blocking an opening in the roof of the sewer above your head.";
+  ],
+  before
+  [;
+    Close:
+      if (opening hasnt open)
+        "It's already closed.";
+      if (self in room10)
+        <<Push self>>;
+    Open:
+      if (opening has open)
+        "It's already open.";
+      if (self in room10)
+        <<Pull self second>>;
+      else
+        <<Push self>>;
+    Pull, Take:
+      if (self in room09)
+        "It's lodged in the opening above your head. Try pushing it.";
+      if (opening has open)
+        "It's too heavy.";
+      give opening open ~scenery static;
+      MoveFloatingObjects();
+      "Oof, it's heavy. You pull the grate out of the opening and push it to one side. The smell of the sewer accosts your nostrils.";
+    Push:
+      if (self in room10 && opening hasnt open)
+        "It's lodged in the opening. Try pulling it.";
+      if (self in room10)
+      {
+        give opening ~open scenery ~static;
+        MoveFloatingObjects();
+        "Oof, it's heavy. You push the grate back into the opening. The smell from the sewer is still there, but it's not as noticeable.";
+      }
+      give opening open ~scenery static;
+      MoveFloatingObjects();
+      "Oof, it's heavy. You push the grate out of the opening and to one side. This lets a little more light through the opening. You can now climb out of the sewer.";
+  ],
+  found_in
+  [;
+    if (location == room10)
+      rtrue;
+    if (location == room09 && opening hasnt open)
+      rtrue;
+  ],
+has static;
+
+!========================================
+! Room 10: Farrier's Stable
+!========================================
+Object room10 "Farrier's Stable"
+with
+  description
+  [;
+    print "This is clearly a stable, but it's fitted out with everything you'd expect to find in a blacksmith's shop. Sunshine streams in from the exit to the west, so you can clearly see the many tools amongst the miscellaneous bits of metal and other junk. As your uncle is a farrier, you recognise many of the tools. There's also ";
+    if (opening hasnt static)
+      print "a grate";
+    else
+      print "an opening";
+    " in the floor.";
+  ],
+  w_to room11,
+  d_to opening,
+has light;
+
+!----------------------------------------
+! Farrier's stable
+!----------------------------------------
+Object "farrier's stable" room10
+with
+  name 'farrier' 'farrier^s' 'shop' 'stable',
+  description "It's full of tools.",
+has scenery;
+
+!----------------------------------------
+! Tools and miscellaneous junk
+!----------------------------------------
+Object "tools" room10
+with
+  parse_name
+  [ i;
+    while (NextWord() == 'tool' or 'tools//p' or 'bit' or 'bits//p' or 'metal' or 'junk')
+      i++;
+    return i;
+  ],
+  description "Don't worry about the junk, just concentrate on the tools you know.",
+has scenery;
+
+!----------------------------------------
+! Forge
+!----------------------------------------
+Object forge "forge" room10
+with
+  name 'forge',
+  description
+  [;
+    print "It's a small coal-fired forge used to heat the horsehoes so that they can be shaped and moulded. ";
+    <<Search self>>;
+  ],
+  invent
+  [;
+    if (inventory_stage == 2 && children(self) == 0)
+      rtrue;
+  ],
+has container open static;
+
+!----------------------------------------
+! Hot coals
+!----------------------------------------
+Object coals "hot coals" forge
+with
+  name 'hot' 'coals//p',
+  description
+  [;
+    print "They are glowing red hot.";
+    if (self hasnt general)
+    {
+      give self general;
+      print " This gives you an idea. If you can start a fire at the corner of the laneway, you'll be able to create a diversion. You'll need something to put the coals in, some tinder and wood to start a fire, and something to make it smokey. Then you can hide and sound the alarm. The guard can't possibly ignore that. Brilliant!";
+    }
+    "";
+  ],
+  before
+  [;
+    Take:
+      if (self in bucket)
+        "The hot coals are quite happy sitting in the bucket.";
+      if (second == nothing && tongs in player)
+      {
+        print "(with the tongs)^";
+        <<Take self tongs>>;
+      }
+      if (second == nothing)
+        "They're too hot to take in your bare hands.";
+      if (second ~= tongs)
+        "You can't take the coals with ", (ThatOrThose)second, ".";
+      if (~~IndirectlyContains(location, bucket))
+        "They're too hot to carry around. You need to put them in a container.";
+      print "The coals are hot, so you ";
+      if (children(bucket) > 0)
+        "need something to put them in. The bucket would be good, but you'll have to empty it first.";
+      move coals to bucket;
+      "put them in the empty bucket.";
+  ],
+has pluralname;
+
+!----------------------------------------
+! Tongs
+!----------------------------------------
+Object tongs "pair of tongs" room10
+with
+  name 'pair' 'of' 'tongs//p',
+  description "It's a hinged pair of tongs that is used to hold hot metal or hot horseshoes while being heated in the forge.",
+has;
+
+!----------------------------------------
+! Rasp
+!----------------------------------------
+Object rasp "rasp" room10
+with
+  name 'rasp',
+  description "It's a farrier's rasp. It's like a giant nail file for horses. It allows the farrier to keep the horse's hooves even and level when unshod and to round the edge of the hoof so that it doesn't catch on anything. The rasp is also used to smooth down nails.",
+has;
+
+!----------------------------------------
+! Quenching bucket
+!----------------------------------------
+Object bucket "quenching bucket" room10
+with
+  name 'quenching' 'bucket',
+  description
+  [;
+    print "It's a bucket that's used to quench horseshoes after they've been heated in the forge and shaped on the anvil. ";
+    <<Search self>>;
+  ],
+  invent
+  [;
+    if (inventory_stage == 2 && children(self) == 0)
+      rtrue;
+  ],
+  before
+  [;
+    Empty:
+      if (coals in self)
+        "The hot coals are quite happy sitting in the bucket.";
+      if (water in self)
+      {
+        remove water;
+        "The water soaks into the ground.";
+      }
+    Receive:
+      if (water in self)
+        "You'll have to empty the water out of the bucket before you can put anything in it.";
+      if (noun == coals && children(self) > 0)
+        "You'll have to empty the bucket before putting the coals in it.";
+      if (noun == crate)
+        "The crate's too big to fit in the bucket. You'll have to break it up.";
+      if (coals in self && noun ~= straw or wood or sack)
+        "You don't want to put anything in the bucket with the hot coals, unless it's something that's flammable.";
+      if (location ~= room13)
+        "Not here. Take the bucket to the corner of the laneway.";
+      if (self in player)
+        "You'll need to drop the bucket first, as it will get hot.";
+  ],
+  after
+  [ flag;
+    Receive:
+      if (coals in self && straw in self)
+      {
+        remove straw;
+        move small_flame to self;
+        print "The straw catches light when it comes into contact with the hot coals and starts a small flame.^";
+        flag = true;
+      }
+      if (small_flame in self && wood in self)
+      {
+        remove small_flame;
+        move wood to limbo;
+        move large_flame to self;
+        if (flag)
+          new_line;
+        print "The wood catches light when it comes into contact with the small flame and it becomes a large flame.^";
+        flag = true;
+      }
+      if (large_flame in self && sack in self)
+      {
+        remove large_flame;
+        remove sack;
+        move smoke to self;
+        if (flag)
+          new_line;
+        print "The empty flour sack starts smoking when it comes into contact with the large flame.^";
+        flag = true;
+      }
+      if (flag)
+        rtrue;
+  ],
+has container open;
+
+!----------------------------------------
+! Water in bucket
+!----------------------------------------
+Object water "water" bucket
+with
+  article "some",
+  name 'water',
+  before
+  [;
+    Drink:
+      "No, thanks. It looks dirty.";
+    Take:
+      "It trickles through your fingers.";
+  ],
+has static;
+
+!----------------------------------------
+! Small flame
+!----------------------------------------
+Object small_flame "small flame"
+with
+  name 'small' 'flame',
+  description "It's a small flame that started after you put the dry straw in the bucket with the hot coals.",
+has static;
+
+!----------------------------------------
+! Large flame
+!----------------------------------------
+Object large_flame "large flame"
+with
+  name 'large' 'flame',
+  description "It's a large flame that started after you put the splintered wood in the bucket with the small flame.",
+has static;
+
+!----------------------------------------
+! Smoke
+!----------------------------------------
+Object smoke "plume of smoke"
+with
+  name 'plume' 'of' 'smoke',
+  description "It's a plume of smoke that started after you put the damp flour sack in the bucket with the large flame.",
+has static;
+
+!----------------------------------------
+! Anvil
+!----------------------------------------
+Object anvil "anvil" room10
+with
+  name 'anvil',
+  article "an",
+  description "It's a heavy iron farrier's anvil. The horn-shaped projection at the front is used to mould horse shoes into shape. The top surface is absolutely flat. This part is used to flatten the shoe so that it doesn't pull off and cause pain to the horse.",
+has static;
+
+!----------------------------------------
+! Clinch block
+!----------------------------------------
+Object block "clinch block" room10
+with
+  name 'clinch' 'block',
+  description "It's a small metal block with an angled edge. It's held against the nail clincher so that the nail bends close to the hoof when it’s clinched. It can also be used to help unclinch a nail before a horseshoe is pulled.",
+has;
+
+!----------------------------------------
+! Clinch cutter
+!----------------------------------------
+Object clinch_cutter "clinch cutter" room10
+with
+  name 'clinch' 'cutter',
+  description "It's shaped like a small hatchet with a sharp edge. It's tapped lightly with a hammer to remove excess nail points once the nail has been clinched.",
+has;
+
+!----------------------------------------
+! Nail clincher
+!----------------------------------------
+Object clincher "nail clincher" room10
+with
+  name 'nail' 'clincher',
+  description "It's a farrier's nail clincher. It's a plier-like tool used to fold over the nail and flatten it against the hoof so that the horseshoe stays secure. There are different types. This one has a short, curved jaw, like a goose neck.",
+has;
+
+!----------------------------------------
+! Hoof nippers
+!----------------------------------------
+Object nippers "pair of hoof nippers" room10
+with
+  name 'hoof' 'nipper' 'nippers//p',
+  description "These are like a giant pair of nail clippers. They are used to cut the hoof wall to the correct length and to cut off any excessive or damaged sole or hoof area to reduce the need for extra rasping.",
+has;
+
+!----------------------------------------
+! Hoof pick
+!----------------------------------------
+Object pick "hoof pick" room10
+with
+  name 'hoof' 'pick',
+  description "It's a farrier's hoof pick. It's used to clean out the horse’s feet before using all the other fancy tools. It has a triangular head to dislodge stones and packed-in mud and a coarse brush.",
+has;
+
+!----------------------------------------
+! Hoof stand
+!----------------------------------------
+Object stand "hoof stand" room10
+with
+  name 'hoof' 'stand',
+  description "The hoof stand is used to support the horse’s foot in the final stages of the job. The horse rests its foot on the top of the stand so the farrier can have both hands free to clinch and rasp.",
+has;
+
+!----------------------------------------
+! Hoof tester
+!----------------------------------------
+Object tester "hoof tester" room10
+with
+  name 'hoof' 'tester',
+  description "It's a farrier's hoof tester. It's a two-pronged device that uses a pinching motion to put pressure on different points of the horse's sole or heel. If the horse reacts to the pressure, that usually indicates a sore spot.",
+has;
+
+!----------------------------------------
+! Horseshoe puller
+!----------------------------------------
+Object horseshoe_puller "horseshoe puller" room10
+with
+  name 'horseshoe' 'shoe' 'puller',
+  description "It's a farrier's horseshoe puller. It looks like a giant set of pliers. It's used to pull the horseshoe off, after the nails have been unclinched, without damaging the horse's hoof.",
+has;
+
+!----------------------------------------
+! Knife
+!----------------------------------------
+Object knife "knife" room10
+with
+  name 'knife',
+  description "It's a farrier's knife. It's used to cut excess sole and frog in the feet of the horse so that healthy tissue can breathe. The curve of the knife follows the curve of the sole.",
+has;
+
+!----------------------------------------
+! Nail cutter
+!----------------------------------------
+Object nail_cutter "nail cutter" room10
+with
+  name 'nail' 'cutter',
+  description "It's shaped like a smaller pair of nippers. It's used to clip off excess nail once the horseshoe has been nailed onto the hoof.",
+has;
+
+!----------------------------------------
+! Nail puller
+!----------------------------------------
+Object nail_puller "nail puller" room10
+with
+  name 'nail' 'puller',
+  description "It's a farrier's nail puller. It has little jaws on one end that are used to grip the nail in a horseshoe so that you can pull the nails out one at a time.",
+has;
+
+!----------------------------------------
+! Nailing hammer
+!----------------------------------------
+Object nailing_hammer "nailing hammer" room10
+with
+  name 'nailing' 'hammer',
+  description "It's a small farrier's nailing hammer. It's shaped somewhat like a claw hammer. One side is used to punch nails through the horse's hoof to hold the shoe in place. The other side has two protruding claws that allow the farrier to 'wring off' the nail when it comes out of the side of the horse's hoof.",
+has;
+
+!----------------------------------------
+! Pritchel
+!----------------------------------------
+Object pritchel "pritchel" room10
+with
+  name 'pritchel',
+  description "It's a very pointy chisel used to punch holes in horseshoes, widen nail holes, remove stuck nails from horseshoes and so on.",
+has;
+
+!----------------------------------------
+! Rounding hammer
+!----------------------------------------
+Object rounding_hammer "rounding hammer" room10
+with
+  name 'rounding' 'hammer',
+  description "It's a heavy farrier's rounding hammer with a convex face. It's used to shape and flatten the hot horseshoes on the farrier's anvil.",
+has;
+
+!========================================
+! Room 11: Holding Yard
+!========================================
+Object room11 "Holding Yard"
+with
+  description "This is the holding yard where horses are tethered while waiting for their turn to be shoed. The outer wall of the palace surrounds the yard, apart from the open stable to the east. A large gate to the west allows entry to the yard.",
+  e_to room10,
+  w_to farrier_gate,
+has light;
+
+!----------------------------------------
+! Holding yard
+!----------------------------------------
+Object "holding yard" room11
+with
+  name 'holding' 'yard',
+  description "This is where the horses are tethered while waiting to be shoed.",
+has scenery;
+
+!----------------------------------------
+! Farrier's gate (floating object)
+!----------------------------------------
+Object farrier_gate "farrier's gate"
+with
+  name 'farrier' 'farrier^s' 'gate',
+  description
+  [;
+    print "This is a large wooden gate that provides access to and from the farrier's stable. The gate is as high as the surrounding stone wall. The gate is ";
+    if (self in room12 && self has locked)
+      "closed and locked by a large padlock.";
+    print "currently ";
+    if (self has open)
+      "open.";
+    else
+      "closed.";
+  ],
+  door_dir
+  [;
+    if (self in room11)
+      return w_to;
+    else
+      return e_to;
+  ],
+  door_to
+  [;
+    if (self in room11)
+      return room12;
+    else
+      return room11;
+  ],
+  found_in room11 room12,
+has door lockable locked openable static;
+
+!----------------------------------------
+! Hitching rail
+!----------------------------------------
+Object rail "hitching rail" room11
+with
+  name 'hitching' 'rail' 'horizontal' 'wooden',
+  description "It's a horizontal wooden rail located adjacent to the stone wall at the western end of the holding yard. It's about three feet above the ground, which is a comfortable height for tethering horses.",
+  invent
+  [;
+    if (inventory_stage == 2 && children(self) == 0)
+      rtrue;
+  ],
+  react_before
+  [;
+    Drop:
+      if (player in self && noun in player && noun hasnt worn)
+      {
+        move noun to location;
+        print_ret (The)noun, " falls to the ground.";
+      }
+    Take:
+      if (player in self && noun in location)
+        "You can't reach ", (the)noun, " while you're standing on the hitching rail.";
+  ],
+  before
+  [;
+    Climb:
+      if (player in self)
+        <<Exit self>>;
+      else
+        <<Enter self>>;
+    Receive:
+      "You can't put anything on the hitching rail, as it would just fall off.";
+  ],
+has enterable static supporter;
+
+!----------------------------------------
+! Water trough
+!----------------------------------------
+Object trough "water trough" room11
+with
+  name 'water' 'trough',
+  parse_name
+  [ nw;
+    nw = NextWord();
+    if (nw == 'water' && NextWord() == 'trough')
+      return 2;
+    if (nw == 'trough')
+      return 1;
+    return 0;
+  ],
+  description
+  [;
+    print "The water trough is located adjacent to the stone wall at the southern end of the holding yard. It's a little over one foot high, which is a comfortable height for filling it with water, yet not so low that the horses can't reach it when they want a drink. ";
+    <<Search self>>;
+  ],
+  react_before
+  [;
+    Rub:
+      if (noun == player)
+      {
+        if (player hasnt general)
+          "You're not dirty.";
+        give player ~general;
+        "You wash your legs in the water trough to get rid of the sewer smell. You can now mix with other people.";
+      }
+  ],
+  after
+  [;
+    Enter:
+      if (player has general)
+        "You stand in the water trough and wash your legs to get rid of the sewer smell. You can now mix with other people.";
+  ],
+has container enterable open static;
+
+!----------------------------------------
+! Water
+!----------------------------------------
+Object "water" trough
+with
+  name 'water',
+  article "some",
+  description "It's a bit dirty. It's probably okay for horses, but not for humans.",
+  before
+  [;
+    Drink:
+      "You scoop a handful of water to your mouth. Yuck. It tastes like horse slobber.";
+    Take:
+      "It trickles through your fingers.";
+  ],
+has static;
+
+!========================================
+! Room 12: End of Alley
+!========================================
+Object room12 "End of Alley"
+with
+  description "You're at the end of an alley. The palace wall is to the east, broken only by a large wooden gate. The only way out of the alley is to the south.",
+  s_to room13,
+  e_to farrier_gate,
+has light;
+
+!----------------------------------------
+! End of alley
+!----------------------------------------
+Object "end of the alley" room12
+with
+  name 'end' 'alley',
+  article "the",
+  description "The alley stops here and the horse hoof impressions head off to the east, behind the gate.",
+has scenery;
+
+!----------------------------------------
+! Padlock
+!----------------------------------------
+Object padlock "padlock" room12
+with
+  name 'padlock' 'lock',
+  description
+  [;
+    print "It's a large iron padlock ";
+    if (farrier_gate has locked)
+      "that locks the farrier's gate.";
+    else
+      "that's now ruined since you filed it open.";
+  ],
+  before
+  [;
+    File:
+      if (self hasnt static)
+        "You've already filed it. It's now useless.";
+      if (second == nothing && rasp in player)
+      {
+        print "(with the rasp)^";
+        <<File self rasp>>;
+      }
+      if (second == nothing)
+        "You'll have to tell me what to file it with.";
+      if (second ~= rasp)
+        "You can't file it with ", ThatOrThose(second), ".";
+      give self ~static;
+      give farrier_gate ~locked;
+      "You file the padlock with the farrier's rasp until it falls to the ground. The padlock is now ruined, but the gate is unlocked. The farrier won't be pleased when he finds out.";
+    Take:
+      if (self has static)
+        "It's keeping the gate locked. You can't very well take it unless you can unlock it.";
+  ],
+has static;
+
+!========================================
+! Room 13: Corner of Laneway
+!========================================
+Object room13 "Corner of Laneway"
+with
+  description "You're at the corner of a laneway that extends to the east and an alley that goes to the north. The high palace wall dominates the north-east corner. A rickety wooden fence follows the south edge of the laneway with a gate opposite the alley to the south.",
+  n_to room12,
+  s_to back_gate,
+  e_to room14,
+  before
+  [;
+    Shout:
+      if (smoke in bucket)
+        "~Fire, fire!~^^The guard runs down the laneway. ~Hey, you! Put that fire out. I'm gettin' back to me post.~";
+  ],
+has light;
+
+!----------------------------------------
+! Corner
+!----------------------------------------
+Object "corner of the laneway" room13
+with
+  name 'corner',
+  article "the",
+  description "The laneway heads north and east.",
+has scenery;
+
+!========================================
+! Room 14: Laneway
+!========================================
+Object room14 "Laneway"
+with
+  description "You're in a laneway that extends to the east and west. The northern side of the laneway is dominated by the high palace wall and the southern side is lined by a rickety wooden fence. There's a gate in the fence.",
+  s_to butcher_gate,
+  e_to room01,
+  w_to room13,
+  before
+  [;
+    Shout:
+      if (smoke in bucket)
+        "~Fire, fire!~^^The guard runs down the laneway and nearly bowls you over. ~Hey, you. Take care of that fire down there. I'm headin' back to me post.~";
+  ],
+has light;
+
+!----------------------------------------
+! Butcher's gate (floating object)
+!----------------------------------------
+Object butcher_gate "wooden gate"
+with
+  name 'butcher' 'butcher^s' 'gate',
+  description
+  [;
+    print "It's a rickety wooden gate between the butcher's backyard and the laneway. The gate is currently ";
+    if (self has open)
+      "open.";
+    else
+      "closed.";
+  ],
+  door_dir
+  [;
+    if (self in room14)
+      return s_to;
+    else
+      return n_to;
+  ],
+  door_to
+  [;
+    if (self in room14)
+      return room15;
+    else
+      return room14;
+  ],
+  found_in room14 room15,
+has door openable static;
+
+!========================================
+! Room 15: Backyard of Butcher's Shop
+!========================================
+Object room15 "Backyard of Butcher's Shop"
+with
+  description "You're in the butcher's overgrown backyard. There's nothing noteworthy here apart from the gate to the north and some bins in the tangle of grass and weeds. The butcher's shop is to the south, but that's clearly locked to prevent intruders like you getting in.",
+  n_to butcher_gate,
+  s_to "The butcher might have left his back gate open, but he's not silly enough to leave his shop open.",
+  before
+  [;
+    Shout:
+      if (smoke in bucket)
+      {
+        move guard to room13;
+        "~Fire, fire!~^^You hear the guard run down the laneway past the butcher's gate.";
+      }
+  ],
+has light;
+
+!----------------------------------------
+! Butcher's backyard
+!----------------------------------------
+Object "butcher's backyard" room15
+with
+  article "the",
+  parse_name
+  [ i;
+    while (NextWord() == 'butcher' or 'butcher^s' or 'overgrown' or 'backyard' or 'yard')
+      i++;
+    return i;
+  ],
+  description "Unlike your own backyard, the butcher's backyard is overgrown with grass and weeds.",
+has scenery;
+
+!----------------------------------------
+! Grass and weeds
+!----------------------------------------
+Object "grass and weeds" room15
+with
+  name 'grass' 'weed' 'weeds//p',
+  description
+  [;
+    print "The butcher once had a goat to eat the grass and weeds, but he slaughtered it for meat to sell in his shop. You have a quick rummage through the grass";
+    if (meat_hook in nothing)
+    {
+      move meat_hook to location;
+      " and find a meat hook.";
+    }
+    ", but don't find anything else.";
+  ],
+has pluralname scenery;
+
+!----------------------------------------
+! Meat hook
+!----------------------------------------
+Object meat_hook "meat hook"
+with
+  name 'meat' 'hook',
+  description "It's a large J-shaped hook with a sharp point at the tip of the J. It has a T-shaped cross bar at the top of the J, which is used as a handle.",
+  before
+  [;
+    Tie:
+      if (second == rope)
+      {
+        move rope to limbo;
+        move grappling_hook to parent(self);
+        move self to limbo;
+        "You tie the meat hook to the rope. Now it looks like a grappling hook.";
+      }
+  ],
+has;
+
+!----------------------------------------
+! Grappling hook
+!----------------------------------------
+Object grappling_hook "grappling hook"
+with
+  name 'grappling' 'meat' 'hook' 'rope',
+  description "It's a home-made grappling hook that you made from the rope and the meat hook.",
+  before
+  [;
+    Climb:
+      if (self hasnt static)
+        "It's not attached to anything.";
+      if (player notin top_of_crate && player notin rail)
+        "You can't reach it. You need to be standing on something.";
+      if (bucket in player)
+        "You can't climb the rope while carrying the bucket. You'll have to drop it first.";
+      print "You climb the rope and clamber over the wall, then lower yourself into the ";
+      if (player in top_of_crate)
+      {
+        print "holding yard.^^";
+        PlayerTo(room11, 2);
+        rtrue;
+      }
+      print "laneway.^^";
+      PlayerTo(room12, 2);
+      rtrue;
+    Take:
+      if (self has static && player notin top_of_crate && player notin rail)
+        "You can't reach it. You need to be standing on something.";
+      if (self has static)
+      {
+        give self ~static;
+        move self to location;
+        "You give the rope a shake until it dislodges the hook. It falls to the ground below and nearly hits you on the head. You should be more careful.";
+      }
+    ThrowAt:
+      if (location == room01 && guard in location)
+        "Not in front of the guard.";
+      if (location == room01 or room16)
+        "The guard's gone. You can just use the palace gates.";
+      if (stone_wall notin location)
+        "Clang! That was a pretty pointless exercise.";
+      if (player notin top_of_crate && player notin rail)
+        "You can't throw it high enough. You need to be standing on something.";
+      move self to location;
+      give self static;
+      "You hang onto the end of the rope and throw the grappling hook over the stone wall. It catches. You pull it tight and it feels sturdy.";
+    Untie:
+      move meat_hook to parent(self);
+      move rope to parent(self);
+      remove self;
+      "You untie the rope from the meat hook.";
+  ],
+has;
+
+!----------------------------------------
+! Garbage bins
+!----------------------------------------
+Object bins "garbage bins" room15
+with
+  name 'garbage' 'bin' 'bins//p',
+  description
+  [;
+    print "They are very large bins used to store any refuse from the butcher's shop. ";
+    <<Search self>>;
+  ],
+  invent
+  [;
+    if (inventory_stage == 2 && (self hasnt open || children(self) == 0))
+      rtrue;
+  ],
+  before
+  [;
+    Receive:
+      "The bins are already full of bones. There's no room to fit anything else.";
+    Smell:
+      "They smell pretty awful, like rotting meat.";
+  ],
+has container openable pluralname static;
+
+!----------------------------------------
+! Bones
+!----------------------------------------
+Object bones "bones" bins
+with
+  name 'bone' 'bones//p',
+  description "They look like animal bones. You're not a butcher, so you can't identify which bones come from which animal, but you presume them to be mainly pigs and sheep. Many of the bones have been broken to remove the marrow.",
+  before
+  [;
+    Smell:
+      "They smell pretty awful, but what would you expect?";
+!    Take:
+!      "You're a baker, not a butcher. You have no need for smelly bones.";
+    ThrowAt:
+      if (second == nothing && guard in location)
+      {
+        print "(at the guard)^";
+        <<ThrowAt self guard>>;
+      }
+      if (second == nothing)
+        "You'll have to tell me what to throw them at.";
+      if (second == guard)
+      {
+        move self to location;
+        print "~Hey, you little mongrel! No one throws their rubbish at the king's guard!~ The guard chases you down the street. You run for your life and hide in the crowd. The guard gives up the chase and returns to his post.^^";
+        PlayerTo(room02, 2);
+        rtrue;
+      }
+  ],
+has pluralname;
+
+!========================================
+! Room 16: Gravel Driveway
+!========================================
+Object room16 "Gravel Driveway"
+with
+  name 'gravel' 'driveway',
+  description "You're on a gravel driveway that extends from the elaborate palace gates to the south to the palace to the north. The gravel crunches under your feet as you walk on it.",
+  n_to room17,
+  s_to palace_gates,
+has light;
+
+!----------------------------------------
+! Gravel driveway
+!----------------------------------------
+Object "gravel driveway" room16
+with
+  name 'gravel' 'driveway',
+  description "The driveway leads north to the palace and south to the palace gates.",
+has scenery;
+
+!========================================
+! Room 17: Entrance to Palace
+!========================================
+Object room17 "Entrance to Palace"
+with
+  description "You have reached the entrance to the palace. This is the last obstacle between you and the king's ball. The entrance is to the north and the driveway heads to the south.",
+  n_to
+  [;
+    if (coin in herald)
+    {
+      deadflag = 2;
+      "The herald ushers you in to the palace ballroom. ~Good luck Benjamin. You sound like you have a good business case and the king is in a good mood.~^^Congratulations! You have managed to swindle your way into the king's ball. Now all you have to do is sweet talk the king. I'm sure the fruit cake will convince him.";
+    }
+  ],
+  s_to room16,
+  after
+  [;
+    Go:
+      if (player has general)
+      {
+        <Look>;
+        print "~Oh, my God! You stink. You can't go into the ball smelling like that!~ With that, the herald quickly escorts you to the front gate. ~Don't come back until you've washed yourself!~^^";
+        PlayerTo(room01, 2);
+        rtrue;
+      }
+  ],
+has light;
+
+!----------------------------------------
+! Entrance to palace
+!----------------------------------------
+Object "entrance to the palace" room17
+with
+  name 'entrance' 'palace',
+  article "the",
+  description "You were expecting something more regal, but the king is a charitable man who spends money on his subjects, rather than himself.",
+has scenery;
+
+!----------------------------------------
+! Herald
+!----------------------------------------
+Object herald "herald" room17
+with
+  name 'herald' 'man',
+  description "He's a tall, handsome man with shoulder-length curly hair. He wears a fine suit made from cream-coloured linen.",
+  life
+  [;
+    Give:
+      if (noun ~= coin)
+        "~Hey, I'm just the herald. Save your gifts for the king.~";
+      if (self.state < 2)
+        "~You don't have to pay to go to the ball, you just need to show me your invitation.~";
+      self.state = 3;
+      move coin to herald;
+      "The herald looks around to make sure no one is looking, then inspects the coin and puts it in his pocket. ~Your invitation is good sir. Just one moment.~ He steps inside the door and announces, ~Benjamin the baker!~ He turns back to you and says with a wink, ~Enjoy the ball and good luck with the king.~";
+    Show:
+      if (noun == cake)
+      {
+        if (self.state == 0)
+          "~That's a really nice cake, but why are you showing it to me?~";
+        if (self.state == 1)
+        {
+          self.state = 2;
+          "~Ah, so you really are a baker. That's a really nice cake. I'm sure the king would like it, but I still can't let you in without an invitation.~ He gives you a wink and rubs his fingers together as if he's expecting something.";
+        }
+        "~I've already seen your cake.~";
+      }
+      if (noun == coin)
+        "~Is that your invitation?~ he says with a wink.";
+    Talk:
+      if (self.state == 0)
+      {
+        print "~Er, hello. My name is Benjamin. I'm the local baker. I need to go to the ball so that I can explain my business proposal to the king.~ You briefly explain your proposal to the herald, hoping that he will be sympathetic.^^When you mention the cake, ";
+        if (cake notin player)
+        {
+          self.state = 1;
+          "the herald says, ~What fruit cake? I don't see any fruit cake. Go away before I call the guard.~";
+        }
+        else
+        {
+          self.state = 2;
+          "the herald inspects it. ~That certainly is a nice looking cake. I'm sorry, but I still can't let you in without an invitation.~ He gives you a wink and rubs his fingers together as if he's expecting something.";
+        }
+      }
+      if (self.state == 1)
+      "~I've already told you, no entry without an invitation.~";
+      if (self.state == 2)
+        "Once again, he winks and rubs his fingers together. He must have something in his eye.";
+      "~What are you waiting for? The king's not coming out here to see you.~";
+  ],
+  before
+  [;
+    Bribe:
+      if (second == nothing && coin in player)
+      {
+        print "(with the coin)^";
+        <<Give coin self>>;
+      }
+  ],
+  state 0,
+has animate;
+
+!========================================
+! Room 18: Chicken Coop
+!========================================
+Object room18 "Chicken Coop"
+with
+  description "This is where the chickens live when they aren't scratching about in the backyard. It's also where they lay their eggs. The exit is to the east.",
+  e_to room07,
+has light;
+
+!----------------------------------------
+! Straw
+!----------------------------------------
+Object dummy_straw "straw" room18
+with
+  article "some",
+  parse_name
+  [ i;
+    if (TestScope(straw))
+      return 0;
+    while (NextWord() == 'dry' or 'straw')
+      i++;
+    return i;
+  ],
+  description
+  [;
+    print "It's just a bunch of dry straw where the hens nest. You know there's no eggs there, because you collected them this morning to make the king's cake.";
+    if (egg in nothing)
+    {
+      move egg to location;
+      print " Oh, wait. There's an egg you must have missed in the dim morning light.";
+    }
+    "";
+  ],
+  before
+  [;
+    Take:
+      if (straw notin nothing)
+        "You've already taken some straw. How much straw could you possibly need?";
+      move straw to player;
+      "You take a handful of straw.";
+  ],
+has static;
+
+!----------------------------------------
+! Handful of straw
+!----------------------------------------
+Object straw "handful of straw"
+with
+  name 'handful' 'of' 'straw',
+  description "It's the handful of straw that you took from the chicken coop. It's very dry and brittle.",
+has;
+
+!----------------------------------------
+! Egg
+!----------------------------------------
+Object egg "egg"
+with
+  name 'egg',
+  article "an",
+  description "It's a small egg from one of your Dorking chickens.",
+  before
+  [;
+    ThrowAt:
+      if (second == nothing && guard in location)
+      {
+        print "(at the guard)^";
+        <<ThrowAt self guard>>;
+      }
+      if (second == nothing)
+        "You'll have to tell me what to throw it at.";
+      if (second ~= guard)
+        "No way! That's a waste of a perfectly good egg.";
+      move self to guard;
+      print "~Oi, what the hell do you think you're doing?~ The guard chases you down the street. You run for your life and hide in the crowd. The guard gives up the chase and returns to his post.^^";
+      PlayerTo(room02, 2);
+      rtrue;
+  ],
+has;
+
+!========================================
+! Limbo
+!========================================
+Object limbo;
+
+!========================================
+! Printing rules
+!========================================
+[ consultWord word i;
+  for (i=0:i<WordLength(word):i++)
+    print (char)LowerCase(WordAddress(word)->i);
+];
+
+[ DoesntOrDont obj;
+  if (obj has pluralname)
+    print "don't";
+  else
+    print "doesn't";
+];
+
+[ firstConsultWord word i;
+  for (i=0:i<WordLength(word):i++)
+    if (i == 0)
+      print (char)UpperCase(WordAddress(word)->i);
+    else
+      print (char)LowerCase(WordAddress(word)->i);
+];
+
+!========================================
+! Other routines
+!========================================
+[ LowerCase c; ! for ZSCII matching ISO 8859-1
+  switch (c)
+  {
+    'A' to 'Z': c = c + 32;
+    202, 204, 212, 214, 221: c--;
+    217, 218: c = c - 2;
+    158 to 160, 167, 168, 208 to 210: c = c - 3;
+    186 to 190, 196 to 200: c = c - 5 ;
+    175 to 180: c = c - 6;
+  }
+  return c;
+];
+
+[ PlayerDescription;
+  print "Your name is Benjamin, but everyone calls you Benny. You're a baker and you believe you're the best baker in town. You must be, because you're the only baker in town.^^You would normally be dressed in a flour-covered apron over your work duds, but today you're dressed in your Sunday best so that you can get into the king's ball.";
+  if (self has general)
+    print " Unfortunately, you really stink after trudging through the sewer. You need to do something about that or they'll never let you into the ball.";
+  "";
+];
+
+[ SewerBackground;
+  switch(random(16))!50% chance of getting a message
+  {
+    1: "^You can't believe that anything could smell so bad.";
+    2: "^Something slimy brushes against your leg.";
+    3: "^You see a rat scuttle past in the dim light.";
+    4: "^You hear the squeeking of rats nearby.";
+    5: "^You nearly slip into the disgusting filth. Whew, that was close.";
+    6: "^You suddenly remember that you're wearing your Sunday best. They're going to be filthy.";
+    7: "^You gag at the stench in the sewer.";
+    8: "^You think to yourself, ~I've got to get out of here before I catch some horrible disease.~";
+  }
+];
+[ StreetBackground;
+  if (player hasnt general)
+    switch(random(24))!50% chance of getting a message
+    {
+      1: "^A little girl points at you and says, ~Mummy, isn't that the baker?~";
+      2: "^A young boy tries to pick your pocket, but you shoo him away.";
+      3: "^A young woman smiles at you.";
+      4: "^A youth asks whether you've seen anyone famous yet.";
+      5: "^A middle-aged woman tries standing on her tippy toes to see past the crowd.";
+      6: "^A dog pees on the hitching post.";
+      7: "^An elderly man looks your way and gives you a wave. You don't recognise him, so assume he must be one of your customers.";
+      8: "^People bustle around you.";
+      9: "^A man looks your way, but then you lose site of him in the crowd.";
+      10: "^People around you push and shove as they try to get a better view.";
+      11: "^You briefly see farmer Joe in the crowd.";
+      12: "^A man yells out, ~G'day Benny!~, then you lose sight of him.";
+    }
+  else
+  {
+    switch(random(10))!100% chance of getting a message
+    {
+      1: "^A little girl points at you and says, ~Mummy, that man smells.~";
+      2: "^A young boy says, ~Crikey, you stink!~";
+      3: "^A young woman pinches her nose to block the stink and backs away from you.";
+      4: "^A youth says, ~Geez, mate. You smell worse than the pigs on the farm.~";
+      5: "^A middle-aged woman waves the air in front of her nose and looks around to see where the horrible smell is coming from.";
+      6: "^A dog comes up to you and sniffs your legs, then barks at you and runs off between the legs of the people in the crowd.";
+      7: "^An elderly man looks your way and says, ~Ya should've gone to the privy b'fore ya left 'ome.~";
+      8: "^People move aside when you come near them.";
+      9: "^A man looks your way and says, ~Jesus, mate. Did you shit your pants or somethin'?~";
+      10: "^People block their noses and look your way in disgust.";
+    }
+  }
+];
+
+[ UpperCase c; ! for ZSCII matching ISO 8859-1
+  switch (c)
+  {
+    'a' to 'z': c = c - 32;
+    201, 203, 211, 213, 220: c++;
+    215, 216: c = c + 2;
+    155 to 157, 164, 165, 205 to 207: c = c + 3;
+    181 to 185, 191 to 195: c = c + 5 ;
+    169 to 174: c = c + 6;
+  }
+  return c;
+];
+
+!========================================
+! Grammar
+!========================================
+Extend 'attack'
+  * noun 'with' held -> Attack;
+
+Extend 'lock' first
+  * noun -> Lock;
+
+Extend 'look'
+  * 'into' noun -> Search
+  * 'under' noun -> LookUnder;
+
+Extend 'open' replace
+  * noun -> Open
+  * noun 'with' held -> Pull;
+
+Extend only 'pry' 'prise' 'prize' 'lever' 'jemmy' 'force' replace
+  * noun 'with' held -> Pull
+  * 'apart'/'open' noun 'with' held -> Pull
+  * noun 'apart'/'open' 'with' held -> Pull;
+
+Extend 'pull'
+  * noun 'with' noun -> Pull;
+
+Extend 'read' first
+  * noun -> Read;
+
+Extend only 'say' first
+  * topic -> Say;
+
+Extend only 'speak' replace
+  * -> Talk
+  * creature -> Talk
+  * noun -> Talk
+  * 'to'/'with' creature -> Talk
+  * 'to'/'with' noun -> Talk
+  * 'to'/'with' creature 'about' topic -> Ask
+  * 'to'/'with' noun 'about' topic -> Ask;
+
+Extend 'take'
+  * noun 'with' noun -> Take;
+
+Extend 'throw'
+  * noun 'in'/'into'/'over' noun -> ThrowAt;
+
+Extend only 'unlock' first
+  * noun -> Unlock;
+
+Verb meta 'about' 'info'
+  * -> About;
+
+Verb 'bribe'
+  * creature -> Bribe
+  * creature 'with' noun -> Give reverse;
+
+Verb meta 'credits'
+  * -> Credits;
+
+Verb 'file'
+  * noun -> File
+  * noun 'with' held -> File;
+
+Verb meta 'help' 'instructions'
+  * -> Help;
+
+Verb 'hint' 'clue'
+  * -> Hint;
+
+Verb 'lift'
+  * noun -> Pull
+  * noun 'with' held -> Unlock;
+
+Verb 'slide'
+  * noun -> Slide;
+
+Verb 'talk' 'babble' 'chat' 'communicate' 'converse' 'gab' 'gossip'
+  * -> Talk
+  * creature -> Talk
+  * noun -> Talk
+  * 'to'/'with' creature -> Talk
+  * 'to'/'with' noun -> Talk
+  * 'to'/'with' creature 'about' topic -> Ask
+  * 'to'/'with' noun 'about' topic -> Ask;
+
+Verb 'untie' 'disconnect' 'detach' 'unfasten'
+  * noun -> Untie
+  * noun 'from' noun -> Untie;
+
+Verb 'wash' 'rinse' = 'rub';
+
+Verb 'xyzzy' 'plover' 'plugh' 'yoho'
+  * -> MagicWord;
+
+!========================================
+! Actions
+!========================================
+[ AboutSub;
+  print "This game was an entry in SeedComp! 2003. SeedComp was conducted in two rounds. In round 1 (the 'planting round'), people submitted ideas for games. These were called 'seeds'. In round 2 (the 'sprouting round'), authors selected one or more seeds and worked them into a game.^^For round 2, I selected 'On Guard' submitted by Gareth Pitchford under the pseudonym of AdventureGamer. Once I'd designed the game, I realised that it also shared elements from 'The Witch's Bakery' by Ramona G. This was purely coincidental, but I feel compelled to give her equal credit.^^";
+  <<Credits>>;
+];
+
+[ BribeSub;
+  if (ObjectIsUntouchable(noun))
+    return;
+  if (noun hasnt animate)
+    "You can't bribe an inanimate object.";
+  if (second == nothing)
+    "You'll have to tell me what to bribe ", (the)noun, " with.";
+  <<Give second noun>>;
+];
+
+[ CreditsSub;
+  "Concept by Gareth Pitchford and Ramona G.^Game design and coding by Garry Francis.^Play testing by no one. Be prepared for bugs.";
+];
+
+[ FileSub;
+  if (ObjectIsUntouchable(noun))
+    return;
+  if (second == nothing)
+    "You'll have to tell me what to file ", (the)noun, " with.";
+  if (second ~= rasp)
+    "You can't file anything with ", (ThatOrThose)noun, ".";
+  "Don't be so destructive.";
+];
+
+[ GoSub _prop;
+  if (selected_direction == ne_to or nw_to or se_to or sw_to)
+    "There are no diagonal directions in this game.";
+  _prop = selected_direction;
+#Iftrue RUNTIME_ERRORS > RTE_MINIMUM;
+  if (_prop == 0)
+    return _RunTimeError(ERR_INVALID_DIR_PROP);
+#Endif;
+  GoDir(_prop);
+];
+
+[ HelpSub;
+  print "Tell me what to do using simple commands starting with a verb.^^Use LOOK (or L) to refresh the location description. Identify all the objects in the description and EXAMINE (or X) each one. Read responses carefully for hints.^^Use compass directions (N, S, E, W, U and D) to move around. Draw a map as you go.^^Use GET or TAKE to take objects and DROP to drop them again. Use INVENTORY (or I) to see what you're carrying.^^Use AGAIN (or G) to repeat the last command.^^";
+#Ifv5;
+  print "Use UNDO to undo the last command if you make a mistake.^^";
+#Endif;
+  "Use SAVE to save the game and RESTORE to restore it again.^^There are over 100 verbs that you can use, so if something doesn't work, try a different verb or a different way of doing things. Use HINT if you get stuck.";
+];
+
+[ HintSub;
+  "Examine everything you find and draw a map.";
+];
+
+[ LockSub k;
+  if (ObjectIsUntouchable(noun))
+    return;
+  if (noun hasnt lockable)
+  {
+    PrintMsg(MSG_LOCK_NOT_A_LOCK, 'lock');
+    rtrue;
+  }
+  if (noun has locked)
+  {
+    PrintMsg(MSG_LOCK_ALREADY_LOCKED);
+    rtrue;
+  }
+  if (noun has open)
+  {
+    PrintMsg(MSG_LOCK_CLOSE_FIRST);
+    rtrue;
+  }
+  k = RunRoutines(noun, with_key);
+  if (second == nothing && k ~= nothing && k in player)
+  {
+    second = k;
+    print "(with ", (the)second, ")^";
+  }
+  if (second == nothing)
+    "You don't have the key.";
+  if (second ~= k)
+  {
+    PrintMsg(MSG_LOCK_KEY_DOESNT_FIT);
+    rtrue;
+  }
+  give noun locked;
+  run_after_routines_msg = MSG_LOCK_DEFAULT;
+  run_after_routines_arg_1 = 'lock';
+];
+
+[ LookUnderSub;
+  if (location == thedark)
+    "But it's dark.";
+  "You find nothing of interest.";
+];
+
+[ MagicWordSub;
+  "Magic words won't get you into the king's ball.";
+];
+
+![ PullSub;
+!  if (ObjectIsUntouchable(noun))
+!    return;
+!  if (noun has static)
+!  {
+!    PrintMsg(MSG_PULL_STATIC);
+!    rtrue;
+!  }
+!  if (noun has scenery)
+!  {
+!    PrintMsg(MSG_PULL_SCENERY);
+!    rtrue;
+!  }
+!  if (noun has animate)
+!  {
+!    PrintMsg(MSG_PULL_ANIMATE);
+!    rtrue;
+!  }
+!  PrintMsg(MSG_PULL_DEFAULT); !Nothing obvious happens
+!];
+
+[ ReadSub;
+  if (ObjectIsUntouchable(noun, true))
+    "I suppose you read tea leaves, too";
+  "There's nothing legible on ", (ThatOrThose)noun, ".";
+];
+
+[ SaySub i;
+  if (consult_words == 0)
+    "You have nothing to say.";
+  print "~";
+  i = consult_from;
+  print (firstConsultWord)i++;
+  while (i < consult_from + consult_words)
+    print " ", (consultWord)i++;
+  print ".~^^";
+  if (AfterRoutines())
+    return;
+  "Nothing happens.";
+];
+
+[ SlideSub;
+  if (ObjectIsUntouchable(noun))
+    return;
+  "You can't slide ", (ThatOrThose)noun, ". Perhaps try PUSH or PULL.";
+];
+
+[ TalkSub;
+  if (noun == nothing)
+    "You start talking to no one in particular.";
+  if (noun == player)
+    "You start talking to yourself, but it's a one-sided conversation.";
+  if (RunLife(noun, ##Talk))
+    rtrue;
+  print_ret (The)noun, " ", (IsOrAre)noun, " not very talkative.";
+];
+
+[ UnlockSub k;
+  if (ObjectIsUntouchable(noun))
+    return;
+  if (noun hasnt lockable)
+  {
+    PrintMsg(MSG_UNLOCK_NOT_A_LOCK, 'unlock');
+    rtrue;
+  }
+  if (noun hasnt locked)
+  {
+    PrintMsg(MSG_UNLOCK_ALREADY_UNLOCKED, 'unlock');
+    rtrue;
+  }
+  k = RunRoutines(noun, with_key);
+  if (second == nothing && k ~= nothing && k in player)
+  {
+    second = k;
+    print "(with ", (the)second, ")^";
+  }
+  if (second == nothing)
+    "You don't have the key.";
+  if (second ~= k)
+  {
+    PrintMsg(MSG_UNLOCK_KEY_DOESNT_FIT);
+    rtrue;
+  }
+  give noun ~locked;
+  run_after_routines_msg = MSG_UNLOCK_DEFAULT;
+  run_after_routines_arg_1 = 'unlock';
+];
+
+[ UntieSub;
+  if (noun == nothing)
+    "What do you want to untie?";
+  "You can't untie ", (ThatOrThose)noun, ".";
+];
+
+End;

@@ -1,0 +1,107 @@
+The King's Ball
+By Garry Francis
+For Z-code interpreters
+
+Solution by Garry Francis
+----------------------------------------
+This is a minimal solution. You'll need to EXAMINE lots of things for this solution to make sense. Some optional (but significant) commands are shown in parentheses. These can be omitted once you know what to do.
+
+(I) (you're carrying a small key)
+(X SMALL KEY) (it's the key to your bakery)
+(W) (the guard won't let you)
+S
+S
+X FOUNTAIN (you find a coin)
+GET COIN
+W
+(X CART) (it's tied to hitching post by a rope)
+(LOOK UNDER CART) (you see a manhole)
+(ENTER MANHOLE) (you can't get to it with the cart in the way)
+UNTIE ROPE (cart rolls down hill and crashes, it exposes a manhole)
+(ENTER MANHOLE) (it's closed)
+(OPEN MANHOLE) (you need a hook to grab the handle)
+W (cart has crashed into hitching post and spilled box of potatotes over road)
+GET CRATE
+(N) (the door is closed)
+(OPEN DOOR) (it's locked)
+UNLOCK DOOR WITH KEY
+OPEN IT
+N (the cake is here, but leave it until later)
+N
+(N) (the gate is closed)
+(OPEN GATE) (it's locked)
+UNLOCK GATE
+(OPEN GATE) (you can't open it now or the chickens will get out)
+(GET CHICKENS) (you can't catch them unless both arms are free)
+DROP ALL
+GET CHICKENS
+W
+DROP CHICKENS
+(X STRAW) (you find an egg)
+(GET EGG)
+GET STRAW (you take a handful)
+E
+GET ROPE
+OPEN GATE
+N
+E
+OPEN GATE
+S
+X GRASS (you find a meat hook)
+GET HOOK
+TIE ROPE TO HOOK (you now have a grappling hook)
+N
+W
+S
+S
+S
+E
+LIFT/OPEN COVER WITH HOOK
+D (you've now stink from sewage on your legs)
+N
+PUSH GRATE
+U
+GET RASP
+W
+WASH ME (or STAND IN TROUGH to wash off sewage)
+STAND ON RAIL
+THROW HOOK/ROPE OVER WALL
+CLIMB ROPE (you climb the rope and drop down the other side)
+FILE PADLOCK WITH RASP (padlock falls to ground)
+OPEN GATE
+E
+E
+GET BUCKET
+EMPTY IT
+GET TONGS
+GET COALS (with tongs, you put them in the bucket)
+GET ROUNDING HAMMER
+W
+W
+S
+DROP BUCKET
+S
+S
+GET CAKE
+N
+GET STRAW
+BREAK CRATE WITH HAMMER (you get a small pile of splintered wood)
+GET SACK
+N
+PUT STRAW IN BUCKET (it catches alight)
+PUT WOOD IN BUCKET (it burns, but no smoke)
+PUT SACK IN BUCKET (the fire starts smoking)
+E
+S
+YELL (you shout "FIRE" and hear guard running past gate)
+N
+E
+GET KEY
+UNLOCK GATES WITH KEY
+OPEN THEM
+N
+N
+TALK TO HERALD (he inspects your cake, but won't let you in without invitation)
+GIVE COIN TO HERALD (you bribe him and he announces "Benjamin the baker")
+N
+***THE END***
