@@ -14,7 +14,7 @@ You come up with an ingenious plan. You've baked the most gorgeous fruit cake. I
 
 You leave the cake in the shop and set off to see if you can find a way into the palace. It looks easy enough. All you have to do is get past that guard.
 
-This is a traditional text adventure that was written for [SeedComp! 2023](https://itch.io/jam/seed-comp-1-growing), 9 January to 1 March 2023. The game is hosted at [The King's Ball](https://warrigal.itch.io/kings-ball).
+This is a traditional text adventure that was written for [SeedComp! 2023](https://itch.io/jam/seed-comp-1-growing), 9 January to 1 March 2023.
 
 ## Release notes
 
